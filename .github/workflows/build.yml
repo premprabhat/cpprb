@@ -60,3 +60,44 @@ jobs:
         run: python -m twine upload -u __token__ -p ${{ secrets.pypi_password }} --skip-existing dist/cpprb-*
         if: github.event_name == 'push' && startsWith(github.event.ref,'refs/tags/v') && startsWith(runner.os, 'Windows')
         continue-on-error: true
+
+  build-aarch64:
+    needs: readme
+    strategy:
+      matrix:
+        python: [cp36-cp36m, cp37-cp37m, cp38-cp38,]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    env:
+      py: /opt/python/${{ matrix.python }}/bin/python
+      img: quay.io/pypa/manylinux2014_aarch64
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@v1
+      - name: build wheel
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+            ${{ env.img }} \
+            bash -exc '${{ env.py }} -m venv .env && \
+            source .env/bin/activate && \
+            pip install wheel && \
+            pip install cython setuptools twine gym "numpy<1.20.0" && \
+            pip install '.[gym]' && \
+            cd ./test
+            python -m unittest discover . "*.py" && \
+            deactivate'
+      - uses: actions/download-artifact@v1
+        with:
+          name: README
+      - run: mv README/README.md README.md
+      - uses: actions/upload-artifact@v1
+        with:
+          name: dist
+          path: dist
+        if: startsWith(runner.os, 'Windows')
+      - name: Upload to PyPI
+        run: python -m twine upload -u __token__ -p ${{ secrets.pypi_password }} --skip-existing dist/cpprb-*
+        if: github.event_name == 'push' && startsWith(github.event.ref,'refs/tags/v') && startsWith(runner.os, 'Windows')
+        continue-on-error: true
